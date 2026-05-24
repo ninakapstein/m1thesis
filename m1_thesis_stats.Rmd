@@ -1,0 +1,620 @@
+---
+title: "m1_paper_stats"
+output: html_document
+date: "2026-05-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#Loading necessary libraries
+
+library(dplyr) 
+library(tidyverse)
+library(magrittr)
+library(ggplot2)
+library(writexl)
+library(openxlsx)
+library(ggplot2)
+library(broom)
+library(writexl)
+library(openxlsx)
+library(ggpubr)
+library(here)
+library(janitor)
+library(RcmdrMisc)
+library(broom)
+library(effectsize)
+library(psych)
+library(marginaleffects)
+```
+
+```{r}
+#Set wd
+getwd()
+
+setwd("/Users/ninakapstein/Desktop/lapsyde/m1_thesis")
+
+here::i_am("m1_thesis/m1_thesis_stats.Rmd") 
+
+```
+
+```{r}
+#Load in data
+
+ado_data <- read.csv("data/data_ado_clean.csv")
+
+adult_data <- read.csv("data/data_adult_clean.csv")
+
+#Keeping only what I need
+
+#Ados
+
+ado_data_fin <- ado_data %>% 
+  select(id, condition, age, diplome, mean_rc1, mean_rc2, 
+         mean_arg1, mean_arg2, crt_accuracy)
+
+#Adding an "age group" column
+
+ado_data_fin$age_group <- "Adolescent"
+
+
+#Adults
+
+adult_data_fin <- adult_data %>% 
+  select(id, condition, age, diplome, mean_rc1, mean_rc2, 
+         mean_arg1, mean_arg2, crt_accuracy)
+
+#Adding an "age group" column
+adult_data_fin$age_group <- "Adult"
+
+#Creating one data set for both
+
+all_data_fin <- rbind(ado_data_fin, adult_data_fin) 
+
+
+```
+
+```{r}
+#Summary stats
+
+#Summary statistics
+
+numSummary(all_data_fin[, 3:9], statistics = c("mean", "sd", "quantiles"), quantiles = c (0.25, 0.5, 0.75, 1.0))
+
+
+```
+
+
+```{r}
+#Distributions
+
+#CRT
+ado_crt <- ado_data %>% 
+  select(id, crt_accuracy)
+
+adult_crt <- adult_data %>% 
+  select(id, crt_accuracy)
+
+all_crt <- rbind(ado_crt, adult_crt)
+
+all_counts <- table(all_crt$crt_accuracy)
+
+all_bar <- barplot(all_counts,
+              ylim = c(0, max(all_counts) + 60))
+
+text(all_bar,
+     all_counts,
+     labels = all_counts,
+     pos = 3)
+
+
+#General conspiracy theories (pre-exposure)
+
+hist(all_data_fin$mean_rc1)
+
+#Fallacious arguments (pre-exposure)
+
+hist(all_data_fin$mean_arg1)
+
+#Distributions quite regular for both
+
+```
+
+```{r}
+#Descriptive stats
+
+describe(all_data_fin)
+
+```
+
+```{r}
+#z-scoring the variables - explanation
+
+#N.B.
+#z-scores for general conspiracy and fallacious arguments have been z-scored
+#according to the pre-test scores in order to see variation relative to
+#baseline
+
+#z-scores for age and education were computed normally
+
+#crt scores were logit transformed to account for the skewedness of the data
+```
+
+```{r}
+#z-score calculations
+
+#GENERAL CONSPIRACY -> code "rc"
+#Pre-exposure mean + SD
+rc_pre_mean <- mean(
+  all_data_fin$mean_rc1,
+  na.rm = TRUE
+)
+
+print(rc_pre_mean)
+
+rc_pre_sd <- sd(
+  all_data_fin$mean_rc1,
+  na.rm = TRUE
+)
+
+print(rc_pre_sd)
+
+#Pre-exposure z-score
+all_data_fin$rc_pre_z <-
+  (all_data_fin$mean_rc1 - rc_pre_mean)/
+  (rc_pre_sd)
+
+#Post-exposure z-score SCALED ON PRE-EXPOSURE
+all_data_fin$rc_post_z <-
+  (all_data_fin$mean_rc2 - rc_pre_mean)/
+  (rc_pre_sd)
+
+###############
+
+#SPECIFIC CONSPIRACY -> code "arg"
+#Pre-exposure mean + SD
+arg_pre_mean <- mean(
+  all_data_fin$mean_arg1,
+  na.rm = TRUE
+)
+
+print(arg_pre_mean)
+
+arg_pre_sd <- sd(
+  all_data_fin$mean_arg1,
+  na.rm = TRUE
+)
+
+print(arg_pre_sd)
+
+#Pre-exposure z-score
+all_data_fin$arg_pre_z <-
+  (all_data_fin$mean_arg1 - arg_pre_mean)/
+  (arg_pre_sd)
+
+#Post-exposure z-score SCALED ON PRE-EXPOSURE
+all_data_fin$arg_post_z <-
+  (all_data_fin$mean_arg2 - arg_pre_mean)/
+  (arg_pre_sd)
+
+#Sanity check
+
+mean(all_data_fin$rc_pre_z, na.rm = TRUE)
+
+sd(all_data_fin$rc_pre_z, na.rm = TRUE)
+
+mean(all_data_fin$arg_pre_z, na.rm = TRUE)
+
+sd(all_data_fin$arg_pre_z, na.rm = TRUE)
+
+#Means close to 0, SDs close to 1
+
+#Education z-score
+
+dip_mean <- mean(all_data_fin$diplome, na.rm = TRUE)
+
+dip_sd <- sd(all_data_fin$diplome, na.rm = TRUE)
+
+all_data_fin$dip_z <- 
+  (all_data_fin$diplome - dip_mean)/
+  (dip_sd)
+
+```
+
+```{r}
+#Logit transforming the CRT
+
+#Continuity correction, to keep the scale between 0 and 1
+#formula p = (x+0.5)/(n+1)
+
+#Percentage -> proportion
+all_data_fin$crt_prop <- all_data_fin$crt_accuracy / (100)
+
+#Proportion -> counts
+all_data_fin$crt_count <- all_data_fin$crt_prop * 4
+
+#Continuity correction so that all values fall between 0 and 1
+#Using formula p = (x + 0.5)/(n+1)
+
+all_data_fin$crt_adj <- (all_data_fin$crt_count + 0.5) / (5)
+
+#Checking that min value is 0.1, max value is 0.9
+min(all_data_fin$crt_adj)
+max(all_data_fin$crt_adj)
+
+#Logit transforming the CRT scores
+all_data_fin$crt_logit <- qlogis(all_data_fin$crt_adj)
+
+#Checking that min value is -2.20 and max is 2.20
+min(all_data_fin$crt_logit)
+max(all_data_fin$crt_logit)
+
+#Checking the distribution
+hist(all_data_fin$crt_logit)
+
+summary(all_data_fin$crt_logit)
+```
+
+```{r}
+#Preprocessing for analysis
+
+#Converting condition to factor
+all_data_fin$condition <- factor(
+  all_data_fin$condition,
+  levels = c("control", "conspiracy")
+)
+
+#Converting age to factor
+all_data_fin$age_group <- factor(
+  all_data_fin$age_group,
+  levels = c("Adult", "Adolescent")
+)
+
+```
+
+```{r}
+#Correlational matrix
+
+cor(
+  all_data_fin %>% 
+    select(
+      rc_pre_z,
+      arg_pre_z,
+      crt_logit,
+      dip_z
+    ),
+  use = "pairwise.complete.obs"
+)
+
+```
+
+```{r}
+#MODEL FOR RQ1
+```
+
+```{r}
+#RQ1: Does CRT predict general conspiracy belief? (replication q)
+
+#Predicting z-scored climate-change belief (belief in ACC) from
+#CRT (logit-transformed), age group, their interaction, an education
+
+model_rq1 <- lm(
+  rc_pre_z ~
+    crt_logit * age_group +
+    dip_z,
+  data = all_data_fin
+)
+
+summary(model_rq1)
+
+#Effects of CRT and CRT x Age Group
+```
+
+```{r}
+#PLOTS FOR RQ1
+```
+
+```{r}
+#Plotting the predicted relationship according to the model
+
+# Get predicted values
+interaction_rq1 <- predictions(model_rq1, #uses fitted regression model to 
+                    #generate the y-values
+                    newdata = datagrid( #clean grid of hypothetic x-values
+                      crt_logit = seq(min(all_data_fin$crt_logit, na.rm=T),
+                                      max(all_data_fin$crt_logit, na.rm=T),
+                                      length.out = 100),
+                      age_group = c("Adolescent", "Adult")))
+
+ggplot(interaction_rq1, aes(x = crt_logit, y = estimate, 
+                  color = age_group, fill = age_group)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high), 
+              alpha = 0.2, color = NA) +
+  labs(x = "CRT Score (logit)",
+       y = "Predicted Climate Change Belief (z)",
+       color = "Age Group",
+       fill = "Age Group") + 
+  coord_cartesian(clip = "off") +
+  theme( #insert my favorite theme for consistency throughout!
+  panel.background = element_rect(color = "black", fill = "white", linewidth = 0.75),
+  panel.grid.major = element_line(color = "light grey", linewidth = 0.25),
+  panel.grid.minor = element_line(color = "gray 95", linewidth = 0.25),
+  legend.key = element_rect(color = NA),
+  axis.title.y = element_text(size = 12),
+  axis.title.x = element_text (size = 12),
+  axis.text.y = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  plot.title = element_text(size = 16),
+  plot.background = element_rect(fill='white', color=NA) 
+  )
+
+ggsave("rq1_prediction_plot.png", width = 8, height = 5, dpi = 300)
+
+```
+
+
+```{r}
+#Correlation coefficient plot
+
+tidy(model_rq1, conf.int = TRUE) %>% #takes lm() and turns it into table 
+#with columns for term, estimate, SE, t, and p, conf.int adds columns for
+#low and high confidence
+  filter(term != "(Intercept)") %>% #drops intercept
+  mutate(term = dplyr::recode(term,
+    "crt_logit" = "CRT",
+    "age_groupAdolescent" = "Age Group (Adolescent)",
+    "dip_z" = "Education",
+    "crt_logit:age_groupAdolescent" = "CRT × Age Group")) %>%
+  ggplot(aes(x = estimate, y = term)) + #Beta on x-axis, names on y
+  geom_point() + #adds a dot at each coefficient's beta value
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  #geom_errorbarh is horizontal error bars
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  #vline = vertical dashed line at 0
+  coord_cartesian(clip = "off") +
+  labs(x = "Coefficient Estimate (β)",
+       y = NULL) +
+  theme(
+  panel.background = element_rect(color = "black", fill = "white", linewidth = 0.75),
+  panel.grid.major = element_line(color = "light grey", linewidth = 0.25),
+  panel.grid.minor = element_line(color = "gray 95", linewidth = 0.25),
+  axis.title.y = element_text(size = 12),
+  axis.title.x = element_text (size = 12),
+  axis.text.y = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  plot.title = element_text(size = 16),
+  plot.background = element_rect(fill='white', color=NA) 
+  )
+
+ggsave("rq1_coefficient_plot.png", width = 5, height = 5, dpi = 300)
+
+```
+
+```{r}
+#MODEL FOR RQ2
+
+#Modeling effect of CRT on the change from pre-exposure to post-exposure scores
+
+#Modeling for change from pre to post
+all_data_fin$rc_change <- all_data_fin$rc_post_z - all_data_fin$rc_pre_z
+
+#Looking at effects of CRT
+model_rq2 <- lm(
+  rc_change ~
+    crt_logit * age_group * condition +
+    dip_z,
+  data = all_data_fin
+)
+
+summary(model_rq2)
+
+#No effect of anything except condition here -> no difference in CRT
+#No other interaction effects
+#However, three way interaction between Age x Condition X Group
+```
+
+```{r}
+#Same plot as above, for RQ2
+
+interaction_rq2 <- predictions(model_rq2,
+                    newdata = datagrid(
+                      crt_logit = seq(min(all_data_fin$crt_logit, na.rm = TRUE),
+                                      max(all_data_fin$crt_logit, na.rm = TRUE),
+                                      length.out = 100),
+                      age_group = c("Adolescent", "Adult"),
+                      condition = c("control", "conspiracy")))
+
+ggplot(interaction_rq2, aes(x = crt_logit, y = estimate,
+                             color = condition, fill = condition)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              alpha = 0.2, color = NA) +
+  facet_wrap(~ age_group, 
+             labeller = labeller(age_group = c("Adolescent" = "Adolescents",
+                                               "Adult" = "Adults"))) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  coord_cartesian(clip = "off") +
+  labs(x = "CRT Score (logit)",
+       y = "Predicted Change in Climate Change Belief",
+       color = "Condition",
+       fill = "Condition") +
+    scale_color_manual(values = c("control" = "#E07070", "conspiracy" = "#70B8C8"),
+                   labels = c("control" = "Control", "conspiracy" = "Conspiracy")) +
+    scale_fill_manual(values = c("control" = "#E07070", "conspiracy" = "#70B8C8"),
+                  labels = c("control" = "Control", "conspiracy" = "Conspiracy")) +
+  theme(
+  panel.background = element_rect(color = "black", fill = "white", linewidth = 0.75),
+  panel.grid.major = element_line(color = "light grey", linewidth = 0.25),
+  panel.grid.minor = element_line(color = "gray 95", linewidth = 0.25),
+  legend.key = element_rect(color = NA),
+  axis.title.y = element_text(size = 12),
+  axis.title.x = element_text (size = 12),
+  axis.text.y = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  plot.title = element_text(size = 16),
+  plot.background = element_rect(fill='white', color=NA) 
+  )
+
+ggsave("rq2_prediction_plot.png", width = 10, height = 5, dpi = 300)
+
+```
+
+```{r}
+#Coefficient plot
+tidy(model_rq2) %>% pull(term)
+
+tidy(model_rq2, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(term = case_when(
+    term == "crt_logit" ~ "CRT",
+    term == "age_groupAdolescent" ~ "Age Group (Adolescent)",
+    term == "conditionconspiracy" ~ "Condition (Conspiracy)",
+    term == "dip_z" ~ "Education",
+    term == "crt_logit:age_groupAdolescent" ~ "CRT × Age Group",
+    term == "crt_logit:conditionconspiracy" ~ "CRT × Condition",
+    term == "age_groupAdolescent:conditionconspiracy" ~ "Age Group × Condition",
+    term == "crt_logit:age_groupAdolescent:conditionconspiracy" ~ "CRT × Age Group × Condition",
+    TRUE ~ term
+  )) %>%
+  ggplot(aes(x = estimate, y = term)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  coord_cartesian(clip = "off") +
+  labs(x = "Coefficient Estimate (β)",
+       y = NULL) +
+  theme(
+  panel.background = element_rect(color = "black", fill = "white", linewidth = 0.75),
+  panel.grid.major = element_line(color = "light grey", linewidth = 0.25),
+  panel.grid.minor = element_line(color = "gray 95", linewidth = 0.25),
+  axis.title.y = element_text(size = 12),
+  axis.title.x = element_text (size = 12),
+  axis.text.y = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  plot.title = element_text(size = 16),
+  plot.background = element_rect(fill='white', color=NA) 
+  )
+
+ggsave("rq2_coefficient_plot.png", width = 5, height = 5, dpi = 300)
+
+```
+
+```{r}
+#MODEL FOR RQ3
+```
+
+```{r}
+#Modeling for change from pre- to post-exposure for specific conspiracy
+#endorsement
+
+all_data_fin$arg_change <- all_data_fin$arg_post_z - all_data_fin$arg_pre_z
+
+#Looking at effects of CRT
+model_rq3 <- lm(
+  arg_change ~
+    crt_logit * age_group * condition +
+    dip_z,
+  data = all_data_fin
+)
+
+summary(model_rq3)
+
+#Only significant finding is that of condition, no three-way interaction
+```
+
+```{r}
+#PLOTS FOR RQ3
+```
+
+```{r}
+#Box plot - only significant effect was condition, so it does not make sense
+#to use the same figure here as I did for RQs 1 + 2
+
+ggplot(all_data_fin, aes(x = condition, y = arg_change, fill = condition)) +
+  geom_boxplot(alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  facet_wrap(~ age_group,
+             labeller = labeller(age_group = c("Adolescent" = "Adolescents",
+                                               "Adult" = "Adults"))) +
+  coord_cartesian(clip = "off") +
+  labs(x = "Condition",
+       y = "Change in Conspiracy Theory Endorsement",
+       fill = "Condition") +
+  scale_color_manual(values = c("control" = "#E07070", "conspiracy" = "#70B8C8"),
+                   labels = c("control" = "Control", "conspiracy" = "Conspiracy")) +
+scale_fill_manual(values = c("control" = "#E07070", "conspiracy" = "#70B8C8"),
+                  labels = c("control" = "Control", "conspiracy" = "Conspiracy")) +
+  scale_x_discrete(labels = c("control" = "Control", "conspiracy" = "Conspiracy")) +
+  theme(
+  panel.background = element_rect(color = "black", fill = "white", linewidth = 0.75),
+  panel.grid.major = element_line(color = "light grey", linewidth = 0.25),
+  panel.grid.minor = element_line(color = "gray 95", linewidth = 0.25),
+  legend.key = element_rect(color = NA),
+  axis.title.y = element_text(size = 12),
+  axis.title.x = element_text (size = 12),
+  axis.text.y = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  plot.title = element_text(size = 16),
+  plot.background = element_rect(fill='white', color=NA) 
+  )
+
+
+ggsave("rq3_box_plot.png", width = 10, height = 5, dpi = 300)
+
+```
+
+```{r}
+#Coefficient plot
+
+tidy(model_rq3, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(term = case_when(
+    term == "crt_logit" ~ "CRT",
+    term == "age_groupAdolescent" ~ "Age Group (Adolescent)",
+    term == "conditionconspiracy" ~ "Condition (Conspiracy)",
+    term == "dip_z" ~ "Education",
+    term == "crt_logit:age_groupAdolescent" ~ "CRT × Age Group",
+    term == "crt_logit:conditionconspiracy" ~ "CRT × Condition",
+    term == "age_groupAdolescent:conditionconspiracy" ~ "Age Group × Condition",
+    term == "crt_logit:age_groupAdolescent:conditionconspiracy" ~ "CRT × Age Group × Condition",
+    TRUE ~ term
+  )) %>%
+  ggplot(aes(x = estimate, y = term)) +
+  geom_point() +
+  coord_cartesian(clip = "off") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  labs(x = "Coefficient Estimate (β)",
+       y = NULL) +
+  theme(
+  panel.background = element_rect(color = "black", fill = "white", linewidth = 0.75),
+  panel.grid.major = element_line(color = "light grey", linewidth = 0.25),
+  panel.grid.minor = element_line(color = "gray 95", linewidth = 0.25),
+  axis.title.y = element_text(size = 12),
+  axis.title.x = element_text (size = 12),
+  axis.text.y = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  plot.title = element_text(size = 16),
+  plot.background = element_rect(fill='white', color=NA) 
+  )
+
+ggsave("rq3_coefficient_plot.png", width = 5, height = 5, dpi = 300)
+
+```
+
+
+
+
+
+
+
