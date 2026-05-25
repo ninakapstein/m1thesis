@@ -21,9 +21,6 @@ library(dplyr)
 library(tidyverse)
 library(magrittr)
 library(ggplot2)
-library(writexl)
-library(openxlsx)
-library(ggplot2)
 library(broom)
 library(writexl)
 library(openxlsx)
@@ -31,10 +28,10 @@ library(ggpubr)
 library(here)
 library(janitor)
 library(RcmdrMisc)
-library(broom)
 library(effectsize)
 library(psych)
 library(marginaleffects)
+library(car)
 ```
 
 ```{r}
@@ -78,7 +75,7 @@ adult_data_fin$age_group <- "Adult"
 
 #Creating one data set for both
 
-all_data_fin <- rbind(ado_data_fin, adult_data_fin) 
+all_data_fin <- bind_rows(ado_data_fin, adult_data_fin) 
 
 
 ```
@@ -146,7 +143,8 @@ describe(all_data_fin)
 
 #z-scores for age and education were computed normally
 
-#crt scores were logit transformed to account for the skewedness of the data
+#CRT scores were logit transformed to reduce boundedness
+#and improve scaling of proportion data
 ```
 
 ```{r}
@@ -316,6 +314,8 @@ model_rq1 <- lm(
 
 summary(model_rq1)
 
+plot(model_rq1)
+vif(model_rq1)
 #Effects of CRT and CRT x Age Group
 ```
 
@@ -403,14 +403,11 @@ ggsave("rq1_coefficient_plot.png", width = 5, height = 5, dpi = 300)
 ```{r}
 #MODEL FOR RQ2
 
-#Modeling effect of CRT on the change from pre-exposure to post-exposure scores
+#Modeling effect of CRT on post-exposure scores
 
-#Modeling for change from pre to post
-all_data_fin$rc_change <- all_data_fin$rc_post_z - all_data_fin$rc_pre_z
-
-#Looking at effects of CRT
 model_rq2 <- lm(
-  rc_change ~
+  rc_post_z ~
+    rc_pre_z +
     crt_logit * age_group * condition +
     dip_z,
   data = all_data_fin
@@ -418,9 +415,10 @@ model_rq2 <- lm(
 
 summary(model_rq2)
 
-#No effect of anything except condition here -> no difference in CRT
-#No other interaction effects
-#However, three way interaction between Age x Condition X Group
+plot(model_rq2)
+vif(model_rq2)
+
+#Only main effects of RC, CRT, and Condition
 ```
 
 ```{r}
@@ -428,6 +426,7 @@ summary(model_rq2)
 
 interaction_rq2 <- predictions(model_rq2,
                     newdata = datagrid(
+                      rc_pre_z = mean(all_data_fin$rc_pre_z, na.rm = TRUE),
                       crt_logit = seq(min(all_data_fin$crt_logit, na.rm = TRUE),
                                       max(all_data_fin$crt_logit, na.rm = TRUE),
                                       length.out = 100),
@@ -445,7 +444,7 @@ ggplot(interaction_rq2, aes(x = crt_logit, y = estimate,
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
   coord_cartesian(clip = "off") +
   labs(x = "CRT Score (logit)",
-       y = "Predicted Change in Climate Change Belief",
+       y = "Predicted Post-Exposure Climate Change Belief",
        color = "Condition",
        fill = "Condition") +
     scale_color_manual(values = c("control" = "#E07070", "conspiracy" = "#70B8C8"),
@@ -477,6 +476,7 @@ tidy(model_rq2, conf.int = TRUE) %>%
   filter(term != "(Intercept)") %>%
   mutate(term = case_when(
     term == "crt_logit" ~ "CRT",
+    term == "rc_pre_z" ~ "Baseline ACC Belief",
     term == "age_groupAdolescent" ~ "Age Group (Adolescent)",
     term == "conditionconspiracy" ~ "Condition (Conspiracy)",
     term == "dip_z" ~ "Education",
@@ -514,20 +514,20 @@ ggsave("rq2_coefficient_plot.png", width = 5, height = 5, dpi = 300)
 ```
 
 ```{r}
-#Modeling for change from pre- to post-exposure for specific conspiracy
-#endorsement
+#Modeling for effect of CRT on post-exposure conspiracy scores
 
-all_data_fin$arg_change <- all_data_fin$arg_post_z - all_data_fin$arg_pre_z
-
-#Looking at effects of CRT
 model_rq3 <- lm(
-  arg_change ~
+  arg_post_z ~
+    arg_pre_z +
     crt_logit * age_group * condition +
     dip_z,
   data = all_data_fin
 )
 
 summary(model_rq3)
+
+plot(model_rq3)
+vif(model_rq3)
 
 #Only significant finding is that of condition, no three-way interaction
 ```
@@ -540,15 +540,14 @@ summary(model_rq3)
 #Box plot - only significant effect was condition, so it does not make sense
 #to use the same figure here as I did for RQs 1 + 2
 
-ggplot(all_data_fin, aes(x = condition, y = arg_change, fill = condition)) +
+ggplot(all_data_fin, aes(x = condition, y = arg_post_z, fill = condition)) +
   geom_boxplot(alpha = 0.5) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
   facet_wrap(~ age_group,
              labeller = labeller(age_group = c("Adolescent" = "Adolescents",
                                                "Adult" = "Adults"))) +
   coord_cartesian(clip = "off") +
   labs(x = "Condition",
-       y = "Change in Conspiracy Theory Endorsement",
+       y = "Post-Exposure Conspiracy Theory (Specific) Endorsement (z)",
        fill = "Condition") +
   scale_color_manual(values = c("control" = "#E07070", "conspiracy" = "#70B8C8"),
                    labels = c("control" = "Control", "conspiracy" = "Conspiracy")) +
@@ -580,6 +579,7 @@ tidy(model_rq3, conf.int = TRUE) %>%
   filter(term != "(Intercept)") %>%
   mutate(term = case_when(
     term == "crt_logit" ~ "CRT",
+    term == "arg_pre_z" ~ "Baseline SCE",
     term == "age_groupAdolescent" ~ "Age Group (Adolescent)",
     term == "conditionconspiracy" ~ "Condition (Conspiracy)",
     term == "dip_z" ~ "Education",
