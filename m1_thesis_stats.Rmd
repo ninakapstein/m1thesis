@@ -32,6 +32,9 @@ library(effectsize)
 library(psych)
 library(marginaleffects)
 library(car)
+library(pwr)
+library(kableExtra)
+library(knitr)
 ```
 
 ```{r}
@@ -77,6 +80,11 @@ adult_data_fin$age_group <- "Adult"
 
 all_data_fin <- bind_rows(ado_data_fin, adult_data_fin) 
 
+all_data_fin <- na.omit(all_data_fin)
+
+all_counts <- all_data_fin %>% 
+  group_by(age_group) %>% 
+  count()
 
 ```
 
@@ -130,6 +138,32 @@ hist(all_data_fin$mean_arg1)
 #Descriptive stats
 
 describe(all_data_fin)
+
+ado_data_fin <- na.omit(ado_data_fin)
+
+#Percentage -> proportion
+ado_data_fin$crt_prop <- ado_data_fin$crt_accuracy / (100)
+
+#Proportion -> counts
+ado_data_fin$crt_count <- ado_data_fin$crt_prop * 4
+
+describe(ado_data_fin)
+
+max(ado_data_fin$crt_count)
+
+
+#Same with adult data
+adult_data_fin <- na.omit(adult_data_fin)
+  
+#Percentage -> proportion
+adult_data_fin$crt_prop <- adult_data_fin$crt_accuracy / (100)
+
+#Proportion -> counts
+adult_data_fin$crt_count <- adult_data_fin$crt_prop * 4
+
+describe(adult_data_fin)
+
+max(adult_data_fin$crt_count)
 
 ```
 
@@ -296,7 +330,22 @@ cor(
 ```
 
 ```{r}
+#
+
+```
+
+```{r}
 #MODEL FOR RQ1
+
+#Power analysis
+
+pwr.f2.test(
+  u = 4,        
+  v = 236,     
+  f2 = 0.093, #effect size
+  sig.level = 0.05
+)
+
 ```
 
 ```{r}
@@ -313,6 +362,7 @@ model_rq1 <- lm(
 )
 
 summary(model_rq1)
+confint(model_rq1)
 
 plot(model_rq1)
 vif(model_rq1)
@@ -341,7 +391,7 @@ ggplot(interaction_rq1, aes(x = crt_logit, y = estimate,
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high), 
               alpha = 0.2, color = NA) +
   labs(x = "CRT Score (logit)",
-       y = "Predicted Climate Change Belief (z)",
+       y = "Predicted ACC Belief (z)",
        color = "Age Group",
        fill = "Age Group") + 
   coord_cartesian(clip = "off") +
@@ -400,6 +450,18 @@ ggsave("rq1_coefficient_plot.png", width = 5, height = 5, dpi = 300)
 
 ```
 
+
+```{r}
+#Power analysis for models 2 + 3
+pwr.f2.test(
+  u = 9,      
+  v = 231,      
+  f2 = 0.598,   
+  sig.level = 0.05
+)
+
+```
+
 ```{r}
 #MODEL FOR RQ2
 
@@ -414,6 +476,7 @@ model_rq2 <- lm(
 )
 
 summary(model_rq2)
+confint(model_rq2)
 
 plot(model_rq2)
 vif(model_rq2)
@@ -444,7 +507,7 @@ ggplot(interaction_rq2, aes(x = crt_logit, y = estimate,
   geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
   coord_cartesian(clip = "off") +
   labs(x = "CRT Score (logit)",
-       y = "Predicted Post-Exposure Climate Change Belief",
+       y = "Predicted Post-Exposure ACC Belief",
        color = "Condition",
        fill = "Condition") +
     scale_color_manual(values = c("control" = "#E07070", "conspiracy" = "#70B8C8"),
@@ -525,6 +588,7 @@ model_rq3 <- lm(
 )
 
 summary(model_rq3)
+confint(model_rq3)
 
 plot(model_rq3)
 vif(model_rq3)
@@ -547,7 +611,7 @@ ggplot(all_data_fin, aes(x = condition, y = arg_post_z, fill = condition)) +
                                                "Adult" = "Adults"))) +
   coord_cartesian(clip = "off") +
   labs(x = "Condition",
-       y = "Post-Exposure Conspiracy Theory (Specific) Endorsement (z)",
+       y = "Post-Exposure SCE (z)",
        fill = "Condition") +
   scale_color_manual(values = c("control" = "#E07070", "conspiracy" = "#70B8C8"),
                    labels = c("control" = "Control", "conspiracy" = "Conspiracy")) +
